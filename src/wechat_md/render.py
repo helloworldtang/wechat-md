@@ -76,14 +76,16 @@ def _code_to_wechat_section(code_text: str) -> str:
 
 
 def _h1_section(title_text: str) -> str:
+    # 单层 border-left 竖条(对齐 yyps 渲染器 a86836a,人工+机器双验证):
+    # 旧 3 层 flex 里竖条是独立 DOM 节点——微信编辑器中可被选中,复制转纯文本时
+    # 每层块边界各贡献一个换行;border-left 是 CSS 边框,非节点,零贡献。
     return (
-        '<section style="margin:28px 0 16px;">'
-        '<section style="display:flex;align-items:center;">'
-        '<section style="width:4px;height:22px;background-color:#e74c3c;'
-        'border-radius:2px;margin-right:10px;flex-shrink:0;"></section>'
-        '<p style="margin:0;font-size:19px;font-weight:bold;color:#1a1a1a;">'
+        '<p style="margin:18px 0 10px;padding-left:10px;'
+        "border-left:4px solid #e74c3c;"
+        'font-size:19px;line-height:22px;font-weight:bold;color:#1a1a1a;'
+        'text-align:left;">'
         f"{title_text}"
-        "</p></section></section>"
+        "</p>"
     )
 
 
@@ -120,30 +122,29 @@ def _wechat_html_postprocess(html: str) -> str:
         flags=re.DOTALL,
     )
 
-    # 5. <h2> → 左红条（稍细）
+    # 5. <h2> → 左红条（稍细）——同 h1,单层 border-left,竖条不做独立节点
     html = re.sub(
         r"<h2[^>]*>(.*?)</h2>",
         lambda m: (
-            '<section style="margin:22px 0 12px;">'
-            '<section style="display:flex;align-items:center;">'
-            '<section style="width:3px;height:18px;background-color:#e74c3c;'
-            'border-radius:2px;margin-right:8px;flex-shrink:0;"></section>'
-            '<p style="margin:0;font-size:17px;font-weight:bold;color:#1a1a1a;">'
+            '<p style="margin:14px 0 8px;padding-left:9px;'
+            "border-left:3px solid #e74c3c;"
+            'font-size:17px;line-height:20px;font-weight:bold;color:#1a1a1a;'
+            'text-align:left;">'
             f"{_strip_tags(m.group(1))}"
-            "</p></section></section>"
+            "</p>"
         ),
         html,
         flags=re.DOTALL,
     )
 
-    # 6. <h3> → ▪ 前缀加粗
+    # 6. <h3> → ▪ 前缀加粗(单层 p,去掉多余 section 包裹层)
     html = re.sub(
         r"<h3[^>]*>(.*?)</h3>",
         lambda m: (
-            '<section style="margin:18px 0 10px;">'
-            '<p style="margin:0;font-size:16px;font-weight:bold;color:#333;">'
+            '<p style="margin:12px 0 8px;font-size:16px;font-weight:bold;'
+            'color:#333;text-align:left;">'
             f"▪ {_strip_tags(m.group(1))}"
-            "</p></section>"
+            "</p>"
         ),
         html,
         flags=re.DOTALL,

@@ -28,11 +28,21 @@ def test_code_indent_preserved_with_nbsp():
 
 
 def test_h2_has_red_bar():
-    """H2 应转成左红条 + 加粗 section。"""
+    """H2 应转成左红条 + 加粗——单层 border-left(竖条不做独立节点,防复制多换行)。"""
     md = "## 子标题\n\n正文"
     html = markdown_to_html(md)
-    assert "background-color:#e74c3c" in html
+    assert "border-left:3px solid #e74c3c" in html
     assert "font-weight:bold" in html
+    assert "display:flex" not in html  # 竖条不得是独立 flex 子节点
+
+
+def test_h1_midarticle_single_layer():
+    """正文中间 H1 应转成单层 border-left 竖条(旧 3 层嵌套会在复制时多换行)。"""
+    md = "开头段\n\n# 中间大标题\n\n后文"
+    html = markdown_to_html(md)
+    assert 'border-left:4px solid #e74c3c' in html
+    assert "display:flex" not in html
+    assert "中间大标题" in html
 
 
 def test_link_inline_styled():
