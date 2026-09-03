@@ -1,5 +1,10 @@
 # wechat-md
 
+[![PyPI](https://img.shields.io/pypi/v/wechat-md)](https://pypi.org/project/wechat-md/)
+[![Python](https://img.shields.io/pypi/pyversions/wechat-md)](https://pypi.org/project/wechat-md/)
+[![License: MIT](https://img.shields.io/pypi/l/wechat-md)](LICENSE)
+[![CI](https://github.com/helloworldtang/wechat-md/actions/workflows/ci.yml/badge.svg)](https://github.com/helloworldtang/wechat-md/actions/workflows/ci.yml)
+
 Markdown → 微信公众号 HTML 渲染器。
 
 输出**全部行内 style、零 class、零外部 CSS** 的 HTML，粘贴进微信公众号编辑器即为最终排版——标题、代码块、表格、引用、列表样式完整保留，不依赖任何外部资源。
