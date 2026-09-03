@@ -25,7 +25,7 @@ jobs:
         run: pip install ruff
 
       - name: Ruff
-        run: ruff check --select E,W,F,I,B,C4,UP,SIM --line-length 120 src tests
+        run: ruff check .
 
   typecheck:
     name: Mypy strict
