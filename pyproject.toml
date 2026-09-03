@@ -34,6 +34,7 @@ dev = ["pytest>=8.0"]
 Homepage = "https://github.com/helloworldtang/wechat-md"
 Repository = "https://github.com/helloworldtang/wechat-md"
 Changelog = "https://github.com/helloworldtang/wechat-md/blob/main/CHANGELOG.md"
+Releases = "https://github.com/helloworldtang/wechat-md/releases"
 
 [tool.hatch.version]
 path = "src/wechat_md/__init__.py"
