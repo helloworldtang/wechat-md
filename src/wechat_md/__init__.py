@@ -1,15 +1,14 @@
-"""wechat-md: Markdown → 微信公众号友好 HTML。
+"""wechat-md: Markdown → 微信公众号 HTML 渲染器。
 
-提供与 OpenClaw(小龙虾) 一致的、针对微信公众号 ProseMirror 编辑器实战
-沉淀的 HTML 后处理（代码块 → section + 行内 style、伪列表修复、对话/
-结论区卡片等 17 步）。微信公众号会过滤 class 与外部 CSS，故代码块不用
-语法高亮（避免 class 被 strip），改用 section + 行内 style。
+输出全部行内 style、零 class、零外部 CSS 的 HTML——微信公众号编辑器会
+过滤 class 与外部样式表，通用渲染器的输出会被 strip 成裸文本。本包针对
+公众号编辑器逐项适配：标题竖条、代码块卡片（等宽 + 缩进保留）、表格、
+引用块、对话/结论区卡片等。
 
-纯函数，仅依赖 markdown2。可作为小龙虾、exomind 及任何需要「公众号排版」
-的系统的共享权威实现——一处修改，所有消费方自动跟进。
+纯函数、无网络、无配置，仅依赖 markdown2。一个入口：markdown_to_html(text)。
 """
 
 from wechat_md.render import markdown_to_html
 
 __all__ = ["markdown_to_html"]
-__version__ = "0.1.0"
+__version__ = "0.2.1"

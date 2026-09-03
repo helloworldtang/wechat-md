@@ -4,20 +4,49 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wechat-md"
-version = "0.2.0"
-description = "Markdown → 微信公众号友好 HTML（移植自 OpenClaw 实战后处理）"
+dynamic = ["version"]
+description = "Markdown → 微信公众号 HTML：全行内样式，零 class/外部 CSS，粘贴进公众号编辑器即为终稿"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
-authors = [{ name = "ExoMind Contributors" }]
-keywords = ["wechat", "markdown", "html", "gongzhonghao", "mp"]
+authors = [{ name = "Jackie", email = "helloworld.tang@qq.com" }]
+keywords = ["wechat", "weixin", "markdown", "html", "gongzhonghao", "official-account", "publisher"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Text Processing :: Markup :: HTML",
+  "Topic :: Text Processing :: Markup :: Markdown",
+]
 dependencies = ["markdown2>=2.4"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/helloworldtang/wechat-md"
+Repository = "https://github.com/helloworldtang/wechat-md"
+Changelog = "https://github.com/helloworldtang/wechat-md/releases"
+
+[tool.hatch.version]
+path = "src/wechat_md/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/wechat_md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["markdown2", "markdown"]
+ignore_missing_imports = true
