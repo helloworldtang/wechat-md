@@ -11,9 +11,14 @@ Markdown → 微信公众号友好 HTML。**单一权威实现**，供小龙虾(
 ## 安装
 
 ```bash
+# 版本化安装（生产推荐：升级=显式改版本号）
+pip install https://github.com/helloworldtang/wechat-md/archive/refs/tags/v0.2.0.tar.gz
+
 # editable 安装（开发期推荐，改即生效）
 pip install -e ~/workspace/github/wechat-md
 ```
+
+> pyproject 依赖引用请锁 tag（`.../refs/tags/vX.Y.Z.tar.gz`），**不要引 `main.tar.gz`**——main 是滚动的，`uv sync`/`pip install` 会隐性升级到未审阅的代码。
 
 ## 使用
 

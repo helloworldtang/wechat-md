@@ -160,7 +160,7 @@ def _wechat_html_postprocess(html: str) -> str:
     )
 
     # 7.6 链接样式（蓝字、可点击）
-    def _link_repl(m):
+    def _link_repl(m: re.Match[str]) -> str:
         return (
             f'<a href="{m.group(1)}" '
             'style="color:#576b95;text-decoration:none;word-break:break-all;">'
@@ -260,7 +260,7 @@ def _wechat_html_postprocess(html: str) -> str:
 def _fix_pseudo_lists(html: str) -> str:
     """把 <p> 内以 '- ' 开头的行拆成真正的 <ul><li>（修复 markdown2 伪列表）。"""
 
-    def split_paragraph_list(match):
+    def split_paragraph_list(match: re.Match[str]) -> str:
         p_tag = match.group(1)
         p_content = match.group(2)
         close_tag = match.group(3)
@@ -310,7 +310,7 @@ def _wrap_dialogs(html: str) -> str:
     )
     pattern = r"((?:<p[^>]*>" + dialog_roles + r"[::].*?</p>\s*){2,})"
 
-    def replace_dialog(match):
+    def replace_dialog(match: re.Match[str]) -> str:
         content = match.group(1)
         content = re.sub(
             r"<p[^>]*>",
@@ -333,7 +333,7 @@ def _wrap_conclusion_blocks(html: str) -> str:
         r"((?:<p[^>]*><b>[^<]+</b>.*?</p>\s*)+)"
     )
 
-    def replace(match):
+    def replace(match: re.Match[str]) -> str:
         title_text = match.group(2)
         content = match.group(3)
         content = re.sub(
