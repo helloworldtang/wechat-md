@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wechat-md"
-version = "0.1.0"
+version = "0.2.0"
 description = "Markdown → 微信公众号友好 HTML（移植自 OpenClaw 实战后处理）"
 readme = "README.md"
 requires-python = ">=3.9"
