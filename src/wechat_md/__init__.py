@@ -5,10 +5,12 @@
 公众号编辑器逐项适配：标题竖条、代码块卡片（等宽 + 缩进保留）、表格、
 引用块、对话/结论区卡片等。
 
-纯函数、无网络、无配置，仅依赖 markdown2。一个入口：markdown_to_html(text)。
+纯函数、无网络、无配置，仅依赖 markdown2。一个入口：markdown_to_html(text, theme)。
+theme 为可选配色覆盖（由调用方传入，如 wechat-publish-service 的账号主题），
+不传时输出与历史版本逐字节一致。
 """
 
 from wechat_md.render import markdown_to_html
 
 __all__ = ["markdown_to_html"]
-__version__ = "0.2.1"
+__version__ = "0.3.0"

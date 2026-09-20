@@ -5,6 +5,22 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-20
+
+### Added
+
+- **可选主题（配色覆盖）**：`markdown_to_html(text, theme={...})` 支持按主题着色，
+  键与 wechat-publish-service 的 ThemeConfig 对齐（h1_color / h2_color / h3_color /
+  strong_color / quote_bg / quote_border / code_bg / code_font_size / text_color）。
+  未提供或未知键保持默认；**不传 theme 时输出与历史版本逐字节一致**（回归测试保障）。
+- 渲染器仍为纯函数：主题由调用方传入，包内不做网络与配置读取。
+
+### Notes
+
+- 配套 wechat-publish-service `GET /api/mp/account-theme`（账号默认主题查询）上线后，
+  发文侧可先取账号主题再本地渲染，实现「账号配置主题 → 生成文章生效」。
+
+
 ## [0.2.1] - 2026-09-03
 
 ### Added
@@ -37,7 +53,8 @@
   引用块、链接、伪列表修复、对话卡片、结论区卡片等 17 步公众号专用后处理。
   唯一运行时依赖 markdown2（缺省自动回退 markdown）
 
-[Unreleased]: https://github.com/helloworldtang/wechat-md/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/helloworldtang/wechat-md/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/helloworldtang/wechat-md/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/helloworldtang/wechat-md/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/helloworldtang/wechat-md/compare/1043379...v0.2.0
 [0.1.0]: https://github.com/helloworldtang/wechat-md/tree/1043379

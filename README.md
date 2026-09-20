@@ -39,6 +39,21 @@ html = markdown_to_html("# 标题\n\n正文…")
 
 返回的 HTML 可直接作为公众号草稿正文提交，或粘贴进编辑器。
 
+### 主题（可选）
+
+传入 `theme` 即可按主题配色渲染（键与 wechat-publish-service 的 ThemeConfig 对齐）：
+
+```python
+html = markdown_to_html(
+    md,
+    theme={"h1_color": "#3498db", "h2_color": "#3498db", "strong_color": "#3498db"},
+)
+```
+
+支持键：`h1_color` / `h2_color` / `h3_color` / `strong_color` / `quote_bg` /
+`quote_border` / `code_bg` / `code_font_size` / `text_color`。未提供或未知键保持默认；
+**不传 `theme` 时输出与历史版本逐字节一致**。
+
 ## 排版规则
 
 | Markdown 元素 | 公众号渲染效果 |
@@ -57,7 +72,7 @@ html = markdown_to_html("# 标题\n\n正文…")
 
 ## 设计约束
 
-- 纯函数、无网络、无配置——`markdown_to_html(text: str) -> str` 一个入口。
+- 纯函数、无网络、无配置——`markdown_to_html(text, theme=None)` 一个入口；主题为可选配色字典，由调用方传入。
 - 唯一运行时依赖 `markdown2`（未安装时自动回退 `markdown`）。
 - 兼容 Python 3.9+。
 

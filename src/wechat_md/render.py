@@ -7,11 +7,19 @@
 设计原则：微信公众号会过滤 class 与外部 CSS，故代码块不用语法高亮（避免
 class 被 strip），改用 section + 行内 style；并修复 markdown2 输出在公众号
 ProseMirror 编辑器下的若干渲染 bug。
+
+主题（可选）：``markdown_to_html(text, theme={...})`` 支持配色覆盖，键与
+wechat-publish-service 的 ThemeConfig 对齐（h1_color / h2_color / h3_color /
+strong_color / quote_bg / quote_border / code_bg / code_font_size / text_color）。
+未提供或未知键保持既有默认；不传 theme 时输出与历史版本逐字节一致。
+仍为纯函数：颜色由调用方传入，包内不做任何网络与配置读取。
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
+from dataclasses import dataclass
 
 try:
     import markdown2 as _md2
@@ -28,21 +36,85 @@ except ImportError:  # pragma: no cover - 回退路径
         ) from e
 
 
-def markdown_to_html(markdown_text: str) -> str:
-    """将 Markdown 转换为微信友好的 HTML。"""
+# ---------- 主题配色（可选覆盖） ----------
+
+
+@dataclass(frozen=True)
+class _Palette:
+    """渲染调色板。
+
+    默认值 = 历史硬编码输出（不传 theme 时逐字节一致）；调用方可经
+    ``markdown_to_html(theme=...)`` 覆盖。``strong_color`` 为 None 时不给
+    ``<strong>`` 上色（历史行为）；主题给值时 <strong> 按主题着色。
+    """
+
+    h1_color: str = "#e74c3c"
+    h2_color: str = "#e74c3c"
+    h3_color: str = "#333"
+    strong_color: str | None = None
+    quote_bg: str = "#f8f9fa"
+    quote_border: str = "#e74c3c"
+    code_bg: str = "#f6f8fa"
+    code_font_size: str = "14px"
+    text_color: str = "#333"
+
+    @property
+    def accent(self) -> str:
+        """强调色（结论区竖条/标题等）：取主题粗体色，缺省回落 h1 色（=历史红）。"""
+        return self.strong_color or self.h1_color
+
+
+def _palette_from_theme(theme: Mapping[str, str] | None) -> _Palette:
+    """将调用方传入的主题合并到默认调色板（未知键 / 空值忽略，回退默认）。"""
+    base = _Palette()
+    if not theme:
+        return base
+
+    def pick(key: str, fallback: str) -> str:
+        value = (theme.get(key) or "").strip()
+        return value or fallback
+
+    strong = (theme.get("strong_color") or "").strip()
+    return _Palette(
+        h1_color=pick("h1_color", base.h1_color),
+        h2_color=pick("h2_color", base.h2_color),
+        h3_color=pick("h3_color", base.h3_color),
+        strong_color=strong or None,
+        quote_bg=pick("quote_bg", base.quote_bg),
+        quote_border=pick("quote_border", base.quote_border),
+        code_bg=pick("code_bg", base.code_bg),
+        code_font_size=pick("code_font_size", base.code_font_size),
+        text_color=pick("text_color", base.text_color),
+    )
+
+
+def markdown_to_html(markdown_text: str, theme: Mapping[str, str] | None = None) -> str:
+    """将 Markdown 转换为微信友好的 HTML。
+
+    Args:
+        markdown_text: Markdown 原文。
+        theme: 可选配色覆盖（键与 wechat-publish-service ThemeConfig 对齐：
+            h1_color / h2_color / h3_color / strong_color / quote_bg /
+            quote_border / code_bg / code_font_size / text_color）。
+            缺省 = 历史默认配色；不传 theme 时输出逐字节不变。
+
+    Returns:
+        全行内 style 的微信公众号 HTML。
+    """
+    palette = _palette_from_theme(theme)
     if _USE_MARKDOWN2:
         raw_html = _md2.markdown(markdown_text, extras=["tables", "fenced-code-blocks"])
     else:  # pragma: no cover - 回退路径
         md = _md.Markdown(extensions=["tables", "fenced_code"])
         raw_html = md.convert(markdown_text)
-    return _wechat_html_postprocess(raw_html)
+    return _wechat_html_postprocess(raw_html, palette)
 
 
 def _strip_tags(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text)
 
 
-def _code_to_wechat_section(code_text: str) -> str:
+def _code_to_wechat_section(code_text: str, palette: _Palette) -> str:
     """将代码文本转为微信安全的 section（纯文本 + 行内 style + &nbsp; 保留缩进）。"""
     # 清理 span（高亮库生成的 class 会被微信过滤）
     code_text = re.sub(r"<span[^>]*>", "", code_text)
@@ -66,22 +138,22 @@ def _code_to_wechat_section(code_text: str) -> str:
     code_html = "<br/>".join(processed_lines)
     return (
         '<section style="padding:16px;margin:16px 0;'
-        "background-color:#f6f8fa;border-radius:6px;overflow-x:auto;\">"
-        "<p style=\"margin:0;padding:0;font-size:14px;line-height:1.8;"
+        f"background-color:{palette.code_bg};border-radius:6px;overflow-x:auto;\">"
+        f"<p style=\"margin:0;padding:0;font-size:{palette.code_font_size};line-height:1.8;"
         "font-family:Menlo,Monaco,'Courier New',monospace;"
-        'white-space:pre-wrap;word-wrap:break-word;color:#333;text-align:left;">'
+        f'white-space:pre-wrap;word-wrap:break-word;color:{palette.text_color};text-align:left;">'
         f"{code_html}"
         "</p></section>"
     )
 
 
-def _h1_section(title_text: str) -> str:
+def _h1_section(title_text: str, palette: _Palette) -> str:
     # 单层 border-left 竖条(对齐 yyps 渲染器 a86836a,人工+机器双验证):
     # 旧 3 层 flex 里竖条是独立 DOM 节点——微信编辑器中可被选中,复制转纯文本时
     # 每层块边界各贡献一个换行;border-left 是 CSS 边框,非节点,零贡献。
     return (
         '<p style="margin:18px 0 10px;padding-left:10px;'
-        "border-left:4px solid #e74c3c;"
+        f"border-left:4px solid {palette.h1_color};"
         'font-size:19px;line-height:22px;font-weight:bold;color:#1a1a1a;'
         'text-align:left;">'
         f"{title_text}"
@@ -89,7 +161,7 @@ def _h1_section(title_text: str) -> str:
     )
 
 
-def _wechat_html_postprocess(html: str) -> str:
+def _wechat_html_postprocess(html: str, palette: _Palette) -> str:
     """将标准 HTML 转换为微信公众号友好的 HTML（17 步后处理）。"""
     # 1. 移除开头 <h1>（标题已在草稿字段中，正文不重复）
     html = re.sub(r"^<h1[^>]*>.*?</h1>\s*", "", html, count=1, flags=re.DOTALL)
@@ -97,13 +169,13 @@ def _wechat_html_postprocess(html: str) -> str:
     # 2. 代码块 → 微信安全 section（codehilite 格式 + 裸 pre 格式）
     html = re.sub(
         r'<div class="codehilite">\s*<pre>.*?<code>(.*?)</code></pre>\s*</div>',
-        lambda m: _code_to_wechat_section(m.group(1)),
+        lambda m: _code_to_wechat_section(m.group(1), palette),
         html,
         flags=re.DOTALL,
     )
     html = re.sub(
         r"<pre>(?:<code>)?(.*?)(?:</code>)?</pre>",
-        lambda m: _code_to_wechat_section(m.group(1)),
+        lambda m: _code_to_wechat_section(m.group(1), palette),
         html,
         flags=re.DOTALL,
     )
@@ -111,13 +183,13 @@ def _wechat_html_postprocess(html: str) -> str:
     # 3-4. <h1>（带 style 或裸）→ 左红条 + 加粗
     html = re.sub(
         r'<h1[^>]*style="[^"]*"[^>]*>(.*?)</h1>',
-        lambda m: _h1_section(_strip_tags(m.group(1))),
+        lambda m: _h1_section(_strip_tags(m.group(1)), palette),
         html,
         flags=re.DOTALL,
     )
     html = re.sub(
         r"<h1>(.*?)</h1>",
-        lambda m: _h1_section(_strip_tags(m.group(1))),
+        lambda m: _h1_section(_strip_tags(m.group(1)), palette),
         html,
         flags=re.DOTALL,
     )
@@ -127,7 +199,7 @@ def _wechat_html_postprocess(html: str) -> str:
         r"<h2[^>]*>(.*?)</h2>",
         lambda m: (
             '<p style="margin:14px 0 8px;padding-left:9px;'
-            "border-left:3px solid #e74c3c;"
+            f"border-left:3px solid {palette.h2_color};"
             'font-size:17px;line-height:20px;font-weight:bold;color:#1a1a1a;'
             'text-align:left;">'
             f"{_strip_tags(m.group(1))}"
@@ -142,7 +214,7 @@ def _wechat_html_postprocess(html: str) -> str:
         r"<h3[^>]*>(.*?)</h3>",
         lambda m: (
             '<p style="margin:12px 0 8px;font-size:16px;font-weight:bold;'
-            'color:#333;text-align:left;">'
+            f'color:{palette.h3_color};text-align:left;">'
             f"▪ {_strip_tags(m.group(1))}"
             "</p>"
         ),
@@ -151,12 +223,12 @@ def _wechat_html_postprocess(html: str) -> str:
     )
 
     # 7. 伪列表修复（markdown2 把 "- " 行并进 <p>，导致公众号空项目符号）
-    html = _fix_pseudo_lists(html)
+    html = _fix_pseudo_lists(html, palette)
 
     # 7.5 统一段落样式
     html = html.replace(
         "<p>",
-        '<p style="margin:10px 0;line-height:1.8;font-size:16px;color:#333;text-align:left;">',
+        f'<p style="margin:10px 0;line-height:1.8;font-size:16px;color:{palette.text_color};text-align:left;">',
     )
 
     # 7.6 链接样式（蓝字、可点击）
@@ -180,7 +252,7 @@ def _wechat_html_postprocess(html: str) -> str:
         r"<blockquote>\s*(.*?)\s*</blockquote>",
         lambda m: (
             '<section style="margin:12px 0;padding:10px 16px;'
-            "background-color:#f8f9fa;border-left:3px solid #e74c3c;"
+            f"background-color:{palette.quote_bg};border-left:3px solid {palette.quote_border};"
             'border-radius:0 4px 4px 0;">'
             f"{m.group(1)}"
             "</section>"
@@ -195,11 +267,11 @@ def _wechat_html_postprocess(html: str) -> str:
         lambda m: (
             '<section style="margin:14px 0;padding:12px 16px;background-color:#fafafa;'
             'border-radius:6px;">'
-            '<p style="margin:0 0 8px;font-size:15px;font-weight:bold;color:#e74c3c;">'
+            f'<p style="margin:0 0 8px;font-size:15px;font-weight:bold;color:{palette.accent};">'
             f"▪ {m.group(1)}"
             "</p>"
             f'<{"ul" if m.group(2) == "ul" else "ol"} '
-            'style="margin:0;padding-left:20px;line-height:1.8;font-size:15px;color:#333;">'
+            f'style="margin:0;padding-left:20px;line-height:1.8;font-size:15px;color:{palette.text_color};">'
             f"{m.group(4)}"
             f'</{"ul" if m.group(2) == "ul" else "ol"}>'
             "</section>"
@@ -211,11 +283,11 @@ def _wechat_html_postprocess(html: str) -> str:
     # 11. 普通列表样式
     html = html.replace(
         "<ul>",
-        '<ul style="margin:10px 0;padding-left:20px;line-height:1.8;font-size:16px;color:#333;">',
+        f'<ul style="margin:10px 0;padding-left:20px;line-height:1.8;font-size:16px;color:{palette.text_color};">',
     )
     html = html.replace(
         "<ol>",
-        '<ol style="margin:10px 0;padding-left:20px;line-height:1.8;font-size:16px;color:#333;">',
+        f'<ol style="margin:10px 0;padding-left:20px;line-height:1.8;font-size:16px;color:{palette.text_color};">',
     )
     html = html.replace("<li>", '<li style="margin:4px 0;">')
 
@@ -245,10 +317,14 @@ def _wechat_html_postprocess(html: str) -> str:
     html = _wrap_dialogs(html)
 
     # 15. 结论区 → 灰底卡片
-    html = _wrap_conclusion_blocks(html)
+    html = _wrap_conclusion_blocks(html, palette)
 
     # 16. </b>: 修复（移入 bold 内部，避免公众号渲染异常）
     html = re.sub(r"</b>([::])", r"\1</b>", html)
+
+    # 16.5. <strong> 着色：仅当主题提供 strong_color（缺省保持历史"不着色"行为）
+    if palette.strong_color:
+        html = html.replace("<strong>", f'<strong style="color:{palette.strong_color};">')
 
     # 17. 首元素 margin-top 置 0
     html = html.replace("margin:10px 0", "margin:0 0", 1)
@@ -257,7 +333,7 @@ def _wechat_html_postprocess(html: str) -> str:
     return html
 
 
-def _fix_pseudo_lists(html: str) -> str:
+def _fix_pseudo_lists(html: str, palette: _Palette) -> str:
     """把 <p> 内以 '- ' 开头的行拆成真正的 <ul><li>（修复 markdown2 伪列表）。"""
 
     def split_paragraph_list(match: re.Match[str]) -> str:
@@ -295,7 +371,7 @@ def _fix_pseudo_lists(html: str) -> str:
         if list_parts:
             result += (
                 '<ul style="margin:6px 0;padding-left:20px;line-height:1.8;font-size:15px;'
-                f'color:#333;">{chr(10).join(list_parts)}</ul>'
+                f'color:{palette.text_color};">{chr(10).join(list_parts)}</ul>'
             )
         return result
 
@@ -325,7 +401,7 @@ def _wrap_dialogs(html: str) -> str:
     return re.sub(pattern, replace_dialog, html, flags=re.DOTALL)
 
 
-def _wrap_conclusion_blocks(html: str) -> str:
+def _wrap_conclusion_blocks(html: str, palette: _Palette) -> str:
     """标题后紧跟多个 <b>xxx</b>:xxx 行 → 灰色背景卡片。"""
     pattern = (
         r'(<p style="margin:0;font-size:19px[^>]*>([^<]+)</p>)'
@@ -338,13 +414,13 @@ def _wrap_conclusion_blocks(html: str) -> str:
         content = match.group(3)
         content = re.sub(
             r"<p[^>]*>",
-            '<p style="margin:6px 0;font-size:15px;line-height:1.8;color:#333;">',
+            f'<p style="margin:6px 0;font-size:15px;line-height:1.8;color:{palette.text_color};">',
             content,
         )
         return (
             '<section style="margin:28px 0 16px;">'
             '<section style="display:flex;align-items:center;">'
-            '<section style="width:4px;height:22px;background-color:#e74c3c;'
+            f'<section style="width:4px;height:22px;background-color:{palette.accent};'
             'border-radius:2px;margin-right:10px;flex-shrink:0;"></section>'
             f'<p style="margin:0;font-size:19px;font-weight:bold;color:#1a1a1a;">'
             f"{title_text}</p>"

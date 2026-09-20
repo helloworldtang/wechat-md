@@ -99,3 +99,64 @@ def test_plain_text_gets_paragraph_style():
     md = "这是一段普通文字。\n"
     html = markdown_to_html(md)
     assert "line-height:1.8" in html
+
+
+# ---------- 主题（可选配色覆盖） ----------
+
+
+def test_theme_colors_applied():
+    """主题覆盖：标题竖条 / 粗体 / 引用边框按主题着色。"""
+    md = "## 子标题\n\n**重点** 和引用：\n\n> 引用\n"
+    theme = {"h2_color": "#3498db", "strong_color": "#3498db", "quote_border": "#ddd"}
+    html = markdown_to_html(md, theme=theme)
+    assert "border-left:3px solid #3498db" in html
+    assert '<strong style="color:#3498db;">' in html
+    assert "border-left:3px solid #ddd" in html
+    assert "#e74c3c" not in html
+
+
+def test_theme_absent_keeps_legacy_output():
+    """不传 theme 保持历史默认输出（红 + 粗体不上色）——回归护栏。"""
+    md = "开头段\n\n# 中间标题\n\n**重点**\n\n> 引用\n"
+    assert markdown_to_html(md) == markdown_to_html(md, theme=None)
+    html = markdown_to_html(md)
+    assert "border-left:4px solid #e74c3c" in html  # 正文中间 H1 竖条
+    assert "border-left:3px solid #e74c3c" in html  # 引用边框
+    assert "<strong>" in html
+    assert "<strong style=" not in html
+
+
+def test_theme_partial_override_and_unknown_keys():
+    """部分覆盖：未给字段保持默认；未知键 / 空值忽略。"""
+    md = "## 标题\n\n**重点**\n"
+    html = markdown_to_html(
+        md, theme={"strong_color": "#27ae60", "unknown": "#000000", "h2_color": ""}
+    )
+    assert "border-left:3px solid #e74c3c" in html  # h2 空值 → 默认红
+    assert '<strong style="color:#27ae60;">' in html
+    assert "#000000" not in html
+
+
+def test_theme_h3_and_code():
+    """H3 与代码块取主题色 / 底色 / 字号。"""
+    md = "### 小节\n\n```\ncode\n```\n"
+    html = markdown_to_html(
+        md, theme={"h3_color": "#3498db", "code_bg": "#eeeeee", "code_font_size": "13px"}
+    )
+    assert "color:#3498db" in html
+    assert "background-color:#eeeeee" in html
+    assert "font-size:13px" in html
+
+
+def test_theme_text_color():
+    """正文字色随主题。"""
+    md = "普通段落文字。\n"
+    html = markdown_to_html(md, theme={"text_color": "#444444"})
+    assert "color:#444444" in html
+
+
+def test_theme_empty_inputs_equal_none():
+    """theme={} 或全空值时等价于不传。"""
+    md = "**重点**\n"
+    assert markdown_to_html(md, theme={}) == markdown_to_html(md)
+    assert markdown_to_html(md, theme={"strong_color": ""}) == markdown_to_html(md)
