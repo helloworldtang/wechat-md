@@ -24,7 +24,7 @@ pip install wechat-md
 生产环境锁定版本（升级是显式决策，不隐性漂移）：
 
 ```bash
-pip install wechat-md==0.2.1
+pip install wechat-md==0.3.0
 ```
 
 引用 GitHub 源时锁 tag（`.../archive/refs/tags/vX.Y.Z.tar.gz`），不要引滚动的 `main`。
