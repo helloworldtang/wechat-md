@@ -13,4 +13,4 @@ theme 为可选配色覆盖（由调用方传入，如 wechat-publish-service �
 from wechat_md.render import markdown_to_html
 
 __all__ = ["markdown_to_html"]
-__version__ = "0.3.0"
+__version__ = "0.4.0"

@@ -195,3 +195,45 @@ def test_theme_empty_inputs_equal_none():
     md = "**重点**\n"
     assert markdown_to_html(md, theme={}) == markdown_to_html(md)
     assert markdown_to_html(md, theme={"strong_color": ""}) == markdown_to_html(md)
+
+
+def test_bold_trailing_punct_before_text_renders_strong():
+    """markdown2 死角：粗体尾部标点 + 关闭 ** 外紧跟文字（如 **X。**后缀）
+    应移出标点后正常转 strong，不再输出字面 **。"""
+    md = (
+        "1. **常用药比想象中全。**降压药、降糖药社区基本都有。\n"
+        "2. **家庭医生真的有用。**微信上就能问。\n"
+    )
+    html = markdown_to_html(md)
+    assert "<strong>常用药比想象中全</strong>。" in html
+    assert "<strong>家庭医生真的有用</strong>。" in html
+    assert "**" not in html
+
+
+def test_bold_trailing_punct_in_paragraph_renders_strong():
+    """段落内同样命中（失败面与列表一致）。"""
+    html = markdown_to_html("文字**结论。**后缀文字")
+    assert "<strong>结论</strong>。" in html
+    assert "**" not in html
+
+
+def test_bold_trailing_punct_run_moves_all():
+    """尾部标点整串移出（只移末一个仍会踩死角；% 等符号随串出粗体，转换成立的代价）。"""
+    html = markdown_to_html("1. **涨了3%。**创年内新高\n")
+    assert "<strong>涨了3</strong>%。" in html
+    assert "**" not in html
+
+
+def test_bold_without_trailing_punct_untouched():
+    """粗体尾部无标点、或标点后是空白/行尾/标点——markdown2 本就正常，不改写。"""
+    for md in ("1. **标签**说明\n", "1. **句子。** 后缀\n", "1. **句子。**，后缀\n"):
+        html = markdown_to_html(md)
+        assert "<strong>" in html, md
+
+
+def test_bold_trailing_punct_not_applied_to_code():
+    """围栏代码块与行内代码里的 ** 原样保留（代码内容不做强调归一化）。"""
+    md = "```\n1. **X。**y\n```\n"
+    assert "**X。**" in markdown_to_html(md)
+    md = "行内 `**X。**y` 代码\n"
+    assert "**X。**" in markdown_to_html(md)

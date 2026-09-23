@@ -102,12 +102,47 @@ def markdown_to_html(markdown_text: str, theme: Mapping[str, str] | None = None)
         全行内 style 的微信公众号 HTML。
     """
     palette = _palette_from_theme(theme)
+    # 预归一化须在两套转换器之前（markdown2 有此死角，回退库同理不豁免）
+    markdown_text = _normalize_bold_trailing_punct(markdown_text)
     if _USE_MARKDOWN2:
         raw_html = _md2.markdown(markdown_text, extras=["tables", "fenced-code-blocks"])
     else:  # pragma: no cover - 回退路径
         md = _md.Markdown(extensions=["tables", "fenced_code"])
         raw_html = md.convert(markdown_text)
     return _wechat_html_postprocess(raw_html, palette)
+
+
+# markdown2 强调解析死角：粗体内部以标点结尾、关闭 ** 外侧紧跟文字时
+# （如 ``1. **常用药比想象中全。**降压药…``）不做转换，字面 ** 直接进 HTML
+# （2.5.5 仍如此；CommonMark 规范应为 strong，段落与列表行为一致）。
+# 修法：渲染前把粗体尾部的标点移出粗体（**X。** → **X**。），markdown2 即
+# 正常转换，视觉几乎无差。只命中失败面——外侧紧跟 \w；后跟空白/标点/行尾
+# 的写法 markdown2 本来就能转，不动。
+_BOLD_TRAILING_PUNCT_RE = re.compile(r"\*\*([^*\n]+?)([^\w\s]+)\*\*(?=\w)")
+# 围栏代码块（``` 或 ~~~ 开围；未闭合的围栏吞到文末）与行内代码内容不改
+_FENCED_BLOCK_RE = re.compile(
+    r"(?ms)^(?P<block>(?:`{3,}|~{3,}).*?(?:^(?:`{3,}|~{3,})[ \t]*$|\Z))"
+)
+# 捕获组必须包住整段匹配：re.split 无捕获组会把匹配文本当纯分隔符丢弃
+_INLINE_CODE_RE = re.compile(r"(`[^`\n]+`)")
+
+
+def _normalize_bold_trailing_punct(markdown_text: str) -> str:
+    """把粗体尾部的标点移出粗体，绕开 markdown2 的强调解析死角。"""
+
+    def fix_segment(segment: str) -> str:
+        # 行内代码段（split 奇数位）原样保留
+        parts = _INLINE_CODE_RE.split(segment)
+        return "".join(
+            part if index % 2 else _BOLD_TRAILING_PUNCT_RE.sub(r"**\1**\2", part)
+            for index, part in enumerate(parts)
+        )
+
+    # 围栏代码块（split 奇数位）原样保留
+    chunks = _FENCED_BLOCK_RE.split(markdown_text)
+    return "".join(
+        chunk if index % 2 else fix_segment(chunk) for index, chunk in enumerate(chunks)
+    )
 
 
 def _strip_tags(text: str) -> str:
