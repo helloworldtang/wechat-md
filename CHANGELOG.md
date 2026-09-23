@@ -5,15 +5,26 @@
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-09-20
+## [0.3.0] - 2026-09-23
 
 ### Added
 
 - **可选主题（配色覆盖）**：`markdown_to_html(text, theme={...})` 支持按主题着色，
   键与 wechat-publish-service 的 ThemeConfig 对齐（h1_color / h2_color / h3_color /
   strong_color / quote_bg / quote_border / code_bg / code_font_size / text_color）。
-  未提供或未知键保持默认；**不传 theme 时输出与历史版本逐字节一致**（回归测试保障）。
+  未提供或未知键保持默认；不传 theme 时**配色**与历史版本一致（回归测试保障）。
 - 渲染器仍为纯函数：主题由调用方传入，包内不做网络与配置读取。
+
+### Changed
+
+- **列表 → section 条目**：公众号编辑器会把 li 内「内联元素+后续文本」拆成
+  独立块（2026-09 线上实测，`<strong>标签</strong>` 与「：内容」断成两行），
+  列表标签不可用。ul/ol 逐条改为 `<section>• 文本</section>`（有序列表保留
+  `N.` 序号前缀）。嵌套列表或 li 含块级元素时整段放弃改写、原样保留。
+  与 wechat-publish-service 优化层规则同构，经发布链路输出时幂等无害。
+- **外域链接内联成「文字，URL」**：公众号编辑器会把外链锚点整个删除
+  （连样式都不留），URL 信息丢失。`mp.weixin.qq.com` 互链保持真锚点
+  （编辑器保留可点击）；链接文字含标签或已含 URL 时不冒险改写。
 
 ### Notes
 

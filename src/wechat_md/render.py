@@ -231,13 +231,22 @@ def _wechat_html_postprocess(html: str, palette: _Palette) -> str:
         f'<p style="margin:10px 0;line-height:1.8;font-size:16px;color:{palette.text_color};text-align:left;">',
     )
 
-    # 7.6 链接样式（蓝字、可点击）
+    # 7.6 链接：公众号互链保持锚点（编辑器保留可点击）；外域锚点会被编辑器
+    # 整个删除（线上实测连样式都不留），内联成「文字，URL」保住链接信息
     def _link_repl(m: re.Match[str]) -> str:
-        return (
-            f'<a href="{m.group(1)}" '
+        url, text = m.group(1), m.group(2)
+        anchor = (
+            f'<a href="{url}" '
             'style="color:#576b95;text-decoration:none;word-break:break-all;">'
-            f"{m.group(2)}</a>"
+            f"{text}</a>"
         )
+        if url.startswith(("https://mp.weixin.qq.com/", "http://mp.weixin.qq.com/")):
+            return anchor
+        if "<" in text or url in text:
+            # 文字含标签或已含 URL：不冒险改写，保持锚点（发布链路的
+            # yyps 优化层会再兜一遍）
+            return anchor
+        return f"{text}，{url}"
 
     html = re.sub(
         r'<a href="([^"]+)"[^>]*style="[^"]*"[^>]*>(.*?)</a>', _link_repl, html, flags=re.DOTALL
@@ -313,6 +322,11 @@ def _wechat_html_postprocess(html: str, palette: _Palette) -> str:
         flags=re.DOTALL,
     )
 
+    # 13.5 列表 → section 条目（公众号编辑器会把 li 内「内联元素+后续文本」
+    # 拆成独立块——线上实测 <strong>标签</strong> 与后续文本断成两行，
+    # strong/span 一视同仁；列表标签不可用，•/序号以文本前缀呈现）
+    html = _lists_to_sections(html, palette)
+
     # 14. 对话模式 → 灰色对话卡片
     html = _wrap_dialogs(html)
 
@@ -353,10 +367,8 @@ def _fix_pseudo_lists(html: str, palette: _Palette) -> str:
             if line.strip().startswith("- "):
                 in_list = True
                 item_text = line.strip()[2:].strip()
-                list_parts.append(
-                    f'<li style="margin:4px 0;"><section style="text-align: left;">'
-                    f"{item_text}</section></li>"
-                )
+                # 平铺 li（无内嵌 section）：后续 _lists_to_sections 统一改写成条目
+                list_parts.append(f'<li style="margin:4px 0;">{item_text}</li>')
             else:
                 if in_list:
                     text_parts.append(line)
@@ -376,6 +388,46 @@ def _fix_pseudo_lists(html: str, palette: _Palette) -> str:
         return result
 
     return re.sub(r"(<p[^>]*>)(.*?)(</p>)", split_paragraph_list, html, flags=re.DOTALL)
+
+
+# li 内出现这些标签时整段放弃改写（内联内容与块级混排无法安全搬运）
+_LIST_ABORT_RE = re.compile(r"<(ul|ol|p|section|div|table|pre|blockquote|img)\b", re.IGNORECASE)
+_FLAT_LIST_RE = re.compile(r"<(ul|ol)\b[^>]*>(.*?)</\1>", re.DOTALL)
+_LI_RE = re.compile(r"<li\b[^>]*>(.*?)</li>", re.DOTALL)
+_LIST_START_RE = re.compile(r'start="(\d+)"')
+
+
+def _lists_to_sections(html: str, palette: _Palette) -> str:
+    """ul/ol → section 条目（2026-09 公众号编辑器拆块实测，与
+    wechat-publish-service 优化层规则同构；经发布链路输出时 yyps 侧幂等无害）。
+
+    平铺列表逐条改为 `<section>• 文本</section>`；嵌套列表或 li 含块级元素
+    时整段放弃，原样保留（宁可不转，不可转错）。
+    """
+
+    def rewrite_list(m: re.Match[str]) -> str:
+        open_tag, inner = m.group(0)[: m.start(2) - m.start(0)], m.group(2)
+        ordered = m.group(1) == "ol"
+        if _LIST_ABORT_RE.search(inner):
+            return m.group(0)
+        li_matches = _LI_RE.findall(inner)
+        if not li_matches or len(li_matches) != inner.count("<li"):
+            return m.group(0)  # li 标签不配对
+        start_match = _LIST_START_RE.search(open_tag)
+        num = int(start_match.group(1)) if start_match else 1
+        items = []
+        for item in li_matches:
+            prefix = f"{num}. " if ordered else "• "
+            if ordered:
+                num += 1
+            items.append(
+                '<section style="margin:4px 0;padding-left:24px;text-align:left;'
+                f'line-height:1.8;font-size:16px;color:{palette.text_color};">'
+                f"{prefix}{item.strip()}</section>"
+            )
+        return f'<section style="margin:10px 0;">{"".join(items)}</section>'
+
+    return _FLAT_LIST_RE.sub(rewrite_list, html)
 
 
 def _wrap_dialogs(html: str) -> str:

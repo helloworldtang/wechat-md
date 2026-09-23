@@ -46,11 +46,25 @@ def test_h1_midarticle_single_layer():
 
 
 def test_link_inline_styled():
-    """链接应是蓝字 + 行内 style。"""
+    """外域链接内联成「文字，URL」（公众号编辑器会删外链锚点丢 URL）。"""
     md = "[例子](https://example.com)\n"
     html = markdown_to_html(md)
-    assert 'color:#576b95' in html
-    assert "https://example.com" in html
+    assert "例子，https://example.com" in html
+    assert "<a href" not in html
+
+
+def test_weixin_link_keeps_anchor():
+    """公众号互链保持真锚点（编辑器保留可点击）。"""
+    md = "[旧文](https://mp.weixin.qq.com/s/abc)\n"
+    html = markdown_to_html(md)
+    assert '<a href="https://mp.weixin.qq.com/s/abc"' in html
+
+
+def test_complex_link_keeps_anchor():
+    """链接文字含标签或已含 URL 时不冒险改写，保持锚点。"""
+    md = "[**加粗**](https://example.com) 与 [https://example.com](https://example.com)\n"
+    html = markdown_to_html(md)
+    assert html.count("<a href") == 2
 
 
 def test_blockquote_styled():
@@ -62,11 +76,32 @@ def test_blockquote_styled():
 
 
 def test_list_styled():
-    """列表应有行内 style。"""
+    """列表 → section 条目（公众号编辑器会拆块 li 内联内容，列表标签不可用）。"""
     md = "- 项目一\n- 项目二\n"
     html = markdown_to_html(md)
-    assert "<ul" in html
-    assert "padding-left:20px" in html
+    assert "<ul" not in html
+    assert "<li" not in html
+    assert "• 项目一" in html
+    assert "• 项目二" in html
+    # 条目内联内容整体在同一 section（不触发拆块）
+    assert '<section style="margin:4px 0;padding-left:24px;' in html
+
+
+def test_ordered_list_keeps_numbering():
+    """有序列表序号以文本前缀保留。"""
+    md = "1. 第一\n2. 第二\n"
+    html = markdown_to_html(md)
+    assert "<ol" not in html
+    assert "1. 第一" in html
+    assert "2. 第二" in html
+
+
+def test_list_with_bold_label_inline():
+    """「- **标签**:说明」必须整条内联（2026-09 线上拆块事故回归）。"""
+    md = "- **命中率**：跌破40%说明问法漂移；\n"
+    html = markdown_to_html(md)
+    assert "<li" not in html
+    assert "• <strong>命中率</strong>：跌破40%" in html or "• <strong>命中率" in html
 
 
 def test_hr_removed():
