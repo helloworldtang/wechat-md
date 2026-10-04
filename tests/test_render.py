@@ -237,3 +237,45 @@ def test_bold_trailing_punct_not_applied_to_code():
     assert "**X。**" in markdown_to_html(md)
     md = "行内 `**X。**y` 代码\n"
     assert "**X。**" in markdown_to_html(md)
+
+
+def test_bold_leading_punct_before_text_renders_strong():
+    """markdown2 开界死角（2026-10-04 线上草稿形态）：** 前贴文字、后跟标点
+    （如 水在流**（观察现象**））不做转换——标点移出后正常转 strong。"""
+    md = "水似乎在流**（修复后观察到的\"好转\"现象**），放了一晚上"
+    html = markdown_to_html(md)
+    assert "<strong>修复后观察到的\"好转\"现象</strong>" in html
+    assert "**" not in html
+
+
+def test_bold_leading_punct_multiple_bolds_no_mispairing():
+    """多粗体文本：前一个粗体的闭界同样"前贴文字"，不得被误当开界死角锚点。"""
+    md = "疏通液（**方案一**）。水在流**（现象**），结束"
+    html = markdown_to_html(md)
+    assert "<strong>方案一</strong>" in html
+    assert "<strong>现象</strong>" in html
+    assert "**" not in html
+
+
+def test_bold_both_sides_dead_corner_renders_strong():
+    """两端同时踩死角（流**（X。**后）：两侧标点各搬各的。"""
+    html = markdown_to_html("水在流**（好转现象。**然后")
+    assert "<strong>好转现象</strong>" in html
+    assert "**" not in html
+
+
+def test_bold_leading_punct_run_moves_all():
+    """开界侧标点串整串前移（《（ 整串移到 ** 之前）。"""
+    md = "水在流**（《书》**）"
+    html = markdown_to_html(md)
+    assert "<strong>书》</strong>" in html
+    assert "**" not in html
+
+
+def test_adjacent_bolds_with_punct_between_untouched():
+    """相邻粗体中间只有标点（**A**！**B**c）：原生可配对，不改写不误伤。"""
+    md = "**加粗一**！**加粗二**c"
+    html = markdown_to_html(md)
+    assert "<strong>加粗一</strong>" in html
+    assert "<strong>加粗二</strong>" in html
+    assert "**" not in html

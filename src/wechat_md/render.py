@@ -103,7 +103,7 @@ def markdown_to_html(markdown_text: str, theme: Mapping[str, str] | None = None)
     """
     palette = _palette_from_theme(theme)
     # 预归一化须在两套转换器之前（markdown2 有此死角，回退库同理不豁免）
-    markdown_text = _normalize_bold_trailing_punct(markdown_text)
+    markdown_text = _normalize_bold_punct(markdown_text)
     if _USE_MARKDOWN2:
         raw_html = _md2.markdown(markdown_text, extras=["tables", "fenced-code-blocks"])
     else:  # pragma: no cover - 回退路径
@@ -112,13 +112,21 @@ def markdown_to_html(markdown_text: str, theme: Mapping[str, str] | None = None)
     return _wechat_html_postprocess(raw_html, palette)
 
 
-# markdown2 强调解析死角：粗体内部以标点结尾、关闭 ** 外侧紧跟文字时
-# （如 ``1. **常用药比想象中全。**降压药…``）不做转换，字面 ** 直接进 HTML
-# （2.5.5 仍如此；CommonMark 规范应为 strong，段落与列表行为一致）。
-# 修法：渲染前把粗体尾部的标点移出粗体（**X。** → **X**。），markdown2 即
-# 正常转换，视觉几乎无差。只命中失败面——外侧紧跟 \w；后跟空白/标点/行尾
-# 的写法 markdown2 本来就能转，不动。
-_BOLD_TRAILING_PUNCT_RE = re.compile(r"\*\*([^*\n]+?)([^\w\s]+)\*\*(?=\w)")
+# markdown2 强调解析死角（CommonMark flanking 规则）两类，字面 ** 直接进 HTML：
+# - 开界侧：** 前紧贴文字、后紧跟标点（如 ``水在流**（观察到的现象**）``）
+#   —— 开界后跟标点且前非空白/标点，不是 left-flanking，不能开启强调。
+# - 闭界侧：** 前是标点、后紧贴文字（如 ``1. **常用药比想象中全。**降压药…``）
+#   —— 闭界前是标点且后非空白/标点，不是 right-flanking，不能关闭强调。
+# 修法：渲染前把贴界标点串整串移出粗体（**X。** → **X**。、流**（X**） →
+# 流（**X**）），markdown2 即正常转换，视觉几乎无差。本来就合法的写法不动。
+#
+# 实现不能对 `文字**标点…**文字` 形态直接上正则：多粗体文本里会把前一个
+# 粗体的闭界（同样"前贴文字"）误当锚点、配到下一个粗体的开界，产出错位
+# 改写（如 ``**A**！**B**c``）。因此按 CommonMark 的方式先做分隔符配对
+# （能配对的原生可转换，绝不碰），只对落单的死角开界/闭界配成对后各搬各的
+# 贴界标点串。与 wechat-publish-service（Rust, pulldown-cmark）的
+# render::bold_punct 算法保持同步，两侧新增死角形态须同步修。
+#
 # 围栏代码块（``` 或 ~~~ 开围；未闭合的围栏吞到文末）与行内代码内容不改
 _FENCED_BLOCK_RE = re.compile(
     r"(?ms)^(?P<block>(?:`{3,}|~{3,}).*?(?:^(?:`{3,}|~{3,})[ \t]*$|\Z))"
@@ -127,15 +135,139 @@ _FENCED_BLOCK_RE = re.compile(
 _INLINE_CODE_RE = re.compile(r"(`[^`\n]+`)")
 
 
-def _normalize_bold_trailing_punct(markdown_text: str) -> str:
-    """把粗体尾部的标点移出粗体，绕开 markdown2 的强调解析死角。"""
+def _is_word_char(ch: str) -> bool:
+    """对齐 regex \\w（Unicode 字母/数字 + 下划线），汉字属字母。"""
+    return ch.isalnum() or ch == "_"
+
+
+def _is_punct_char(ch: str) -> bool:
+    return not _is_word_char(ch) and not ch.isspace()
+
+
+def _can_open(prev: str | None, next_: str | None) -> bool:
+    """CommonMark left-flanking：后面非空白，且（后面非标点 或 前面是空白/标点）。"""
+    if next_ is None or next_.isspace():
+        return False
+    if _is_punct_char(next_):
+        return prev is None or prev.isspace() or _is_punct_char(prev)
+    return True
+
+
+def _can_close(prev: str | None, next_: str | None) -> bool:
+    """CommonMark right-flanking：前面非空白，且（前面非标点 或 后面是空白/标点）。"""
+    if prev is None or prev.isspace():
+        return False
+    if _is_punct_char(prev):
+        return next_ is None or next_.isspace() or _is_punct_char(next_)
+    return True
+
+
+def _is_dead_opener(prev: str | None, next_: str | None) -> bool:
+    """开界死角形态：想开但开不了（前贴文字、后跟标点）。"""
+    return (
+        not _can_open(prev, next_)
+        and prev is not None
+        and _is_word_char(prev)
+        and next_ is not None
+        and _is_punct_char(next_)
+    )
+
+
+def _is_dead_closer(prev: str | None, next_: str | None) -> bool:
+    """闭界死角形态：想关但关不了（前是标点、后贴文字）。"""
+    return (
+        not _can_close(prev, next_)
+        and prev is not None
+        and _is_punct_char(prev)
+        and next_ is not None
+        and _is_word_char(next_)
+    )
+
+
+def _normalize_bold_punct(markdown_text: str) -> str:
+    """把死角粗体的贴界标点移出粗体，绕开 markdown2 的强调解析死角。"""
+
+    def fix_plain(text: str) -> str:
+        # 1. 收集恰为 `**` 的分隔符（更长/更短的 `*` 串不碰）
+        delims: list[tuple[int, int, str | None, str | None]] = []
+        i, n = 0, len(text)
+        while i < n:
+            if text[i] != "*":
+                i += 1
+                continue
+            j = i
+            while j < n and text[j] == "*":
+                j += 1
+            if j - i == 2:
+                delims.append(
+                    (i, j, text[i - 1] if i > 0 else None, text[j] if j < n else None)
+                )
+            i = j
+
+        # 2. 模拟 CommonMark 分隔符配对：闭界优先弹栈配对，能配对的原生可转换
+        stack: list[int] = []
+        paired = [False] * len(delims)
+        for idx, (_, _, prev, next_) in enumerate(delims):
+            if _can_close(prev, next_) and stack:
+                paired[stack.pop()] = True
+                paired[idx] = True
+            elif _can_open(prev, next_):
+                stack.append(idx)
+
+        # 3. 落单分隔符按相邻两个配成死角对，各搬各的贴界标点串（整串移出）。
+        #    形态不合（两个都想开/都想关）的落单个跳过，保持字面原样
+        unpaired = [i for i in range(len(delims)) if not paired[i]]
+        edits: list[tuple[int, int, bool]] = []  # (punct_start, punct_end, 移到前面?)
+        k = 0
+        while k < len(unpaired):
+            _, a_end, a_prev, a_next = delims[unpaired[k]]
+            a_openerish = _can_open(a_prev, a_next) or _is_dead_opener(a_prev, a_next)
+            b = delims[unpaired[k + 1]] if k + 1 < len(unpaired) else None
+            b_closerish = b is not None and (
+                _can_close(b[2], b[3]) or _is_dead_closer(b[2], b[3])
+            )
+            if a_openerish and b_closerish:
+                assert b is not None  # b_closerish 为 True 时必存在
+                b_start, _, b_prev, b_next = b
+                if _is_dead_opener(a_prev, a_next):
+                    # 开界后的标点串整串前移到 ** 之前（不吞 `*`）
+                    end = a_end
+                    while end < len(text) and _is_punct_char(text[end]) and text[end] != "*":
+                        end += 1
+                    edits.append((a_end, end, True))
+                if _is_dead_closer(b_prev, b_next):
+                    # 闭界前的标点串整串后移到 ** 之后（不吞 `*`）
+                    start = b_start
+                    while start > 0 and _is_punct_char(text[start - 1]) and text[start - 1] != "*":
+                        start -= 1
+                    edits.append((start, b_start, False))
+                k += 2
+            else:
+                k += 1
+
+        if not edits:
+            return text
+
+        # 4. 应用搬移：每个 edit 单独做「删除标点串 + 在 `**` 另一侧插入」，
+        #    从右往左应用保证前面的偏移不失效。is_dead_* 保证标点串紧贴 `**`：
+        #    移到前面时 `**` 在 [start-2, start)，移到后面时 `**` 在 [end, end+2)
+        result = text
+        for start, end, to_front in sorted(edits, reverse=True):
+            punct = result[start:end]
+            result = result[:start] + result[end:]
+            if to_front:
+                # 删除发生在 `**` 之后，`**` 仍在 start-2 处，插到它前面
+                result = result[: start - 2] + punct + result[start - 2 :]
+            else:
+                # 删除发生在 `**` 之前，`**` 移到了 start 处，插到它后面
+                result = result[: start + 2] + punct + result[start + 2 :]
+        return result
 
     def fix_segment(segment: str) -> str:
         # 行内代码段（split 奇数位）原样保留
         parts = _INLINE_CODE_RE.split(segment)
         return "".join(
-            part if index % 2 else _BOLD_TRAILING_PUNCT_RE.sub(r"**\1**\2", part)
-            for index, part in enumerate(parts)
+            part if index % 2 else fix_plain(part) for index, part in enumerate(parts)
         )
 
     # 围栏代码块（split 奇数位）原样保留
