@@ -76,6 +76,10 @@ html = markdown_to_html(
 - 唯一运行时依赖 `markdown2`（未安装时自动回退 `markdown`）。
 - 兼容 Python 3.9+。
 
+## 在线版
+
+不想写代码？同一渲染内核的托管服务：[yyps.net](https://yyps.net/) ——Markdown 编辑器 + 主题渲染 + AI 封面 + 一键发布公众号草稿箱，并提供 [HTTP API](https://yyps.net/docs)（`POST /api/mp/publish`，一个调用发草稿）。
+
 ## 开发
 
 ```bash
